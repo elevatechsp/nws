@@ -7,7 +7,8 @@ import {
   Wifi, WifiOff, Send, CheckCircle2, ArrowLeft, 
   RotateCw, ShieldCheck,
   Layers, ChevronRight, Clock, 
-  Check, X, FileText, RefreshCw
+  Check, X, FileText, RefreshCw,
+  Save, AlertTriangle, Trash2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -40,14 +41,18 @@ function CollectAppContent() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [myHistorySubmissions, setMyHistorySubmissions] = useState<any[]>([]);
 
-  // Estados
+  // Estados de Operação
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [pendingQueue, setPendingQueue] = useState<PendingSubmission[]>([]);
+  
+  // Modais e Feedback
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
 
   const initialSyncTriggered = useRef(false);
 
@@ -103,7 +108,73 @@ function CollectAppContent() {
     refreshQueue();
   }, [refreshQueue]);
 
-  // 3. Histórico do Operador (Fallback Offline Imediato)
+  // 3. Gerenciamento de Rascunhos e Proteção de Saída
+  const getDraftKey = useCallback((projId: string) => `nws_draft_${projId}`, []);
+
+  const hasUnsavedChanges = useMemo(() => {
+    if (!project) return false;
+    return Object.values(formData).some((v) => v !== undefined && v !== '' && v !== null);
+  }, [formData, project]);
+
+  // Carregar rascunho ao selecionar o projeto
+  useEffect(() => {
+    if (project) {
+      const savedDraft = localStorage.getItem(getDraftKey(project.id));
+      if (savedDraft) {
+        try {
+          const parsed = JSON.parse(savedDraft);
+          setFormData(parsed);
+          setHasRestoredDraft(true);
+          showToast('Rascunho anterior recuperado neste aparelho!');
+        } catch {
+          setFormData({});
+        }
+      } else {
+        setFormData({});
+        setHasRestoredDraft(false);
+      }
+    }
+  }, [project, getDraftKey]);
+
+  // Alerta nativo ao tentar fechar/recarregar a aba do navegador com dados não enviados
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  const handleSaveDraft = () => {
+    if (!project) return;
+    localStorage.setItem(getDraftKey(project.id), JSON.stringify(formData));
+    setHasRestoredDraft(true);
+    showToast('Rascunho temporário salvo com sucesso!');
+  };
+
+  const handleClearDraft = () => {
+    if (!project) return;
+    localStorage.removeItem(getDraftKey(project.id));
+    setFormData({});
+    setHasRestoredDraft(false);
+    showToast('Rascunho descartado.');
+  };
+
+  const handleBackRequest = () => {
+    if (hasUnsavedChanges) {
+      setShowExitConfirmModal(true);
+    } else {
+      setSelectedProjectId('');
+      setProject(null);
+      setFormData({});
+      setHasRestoredDraft(false);
+    }
+  };
+
+  // 4. Histórico do Operador (Fallback Offline Imediato)
   const loadMySubmissions = useCallback(async (operatorName: string) => {
     if (!operatorName) return;
 
@@ -127,12 +198,10 @@ function CollectAppContent() {
         setMyHistorySubmissions(data);
         localStorage.setItem(`nws_my_submissions_${operatorName}`, JSON.stringify(data));
       }
-    } catch {
-      // Mantém os dados offline se a rede falhar
-    }
+    } catch {}
   }, []);
 
-  // 4. Carregar Formulários (Fallback Offline Imediato)
+  // 5. Carregar Formulários
   const loadProjects = useCallback(async (user: any) => {
     if (!user) return;
 
@@ -189,7 +258,6 @@ function CollectAppContent() {
         }
       }
     } catch {
-      // Ignora erro de rede se estiver sem internet
     } finally {
       setIsLoading(false);
     }
@@ -268,18 +336,23 @@ function CollectAppContent() {
         showToast('Modo Offline: Coleta salva no aparelho!');
       }
 
+      // Limpa o rascunho temporário deste projeto após a finalização
+      localStorage.removeItem(getDraftKey(project.id));
       setFormData({});
       setSelectedProjectId('');
       setProject(null);
+      setHasRestoredDraft(false);
       if (currentUser?.name) loadMySubmissions(currentUser.name);
 
     } catch {
       saveOfflineSubmission(submissionPayload);
       refreshQueue();
       showToast('Salvo offline no dispositivo.');
+      localStorage.removeItem(getDraftKey(project.id));
       setFormData({});
       setSelectedProjectId('');
       setProject(null);
+      setHasRestoredDraft(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -314,6 +387,7 @@ function CollectAppContent() {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans pb-20 select-none">
       
+      {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-4 left-4 right-4 z-50 max-w-sm mx-auto bg-slate-900 text-white p-3.5 rounded-2xl shadow-2xl border border-teal-500/50 flex items-center gap-2.5 animate-in slide-in-from-top text-xs font-bold">
           <CheckCircle2 className="w-4 h-4 text-teal-400 shrink-0" />
@@ -352,27 +426,33 @@ function CollectAppContent() {
         </div>
       </header>
 
-      {/* Conteúdo */}
+      {/* Conteúdo Principal */}
       <main className="max-w-md mx-auto w-full p-4 flex-1 flex flex-col space-y-4">
         {project ? (
           <div className="space-y-4 animate-in fade-in">
+            {/* Barra Superior do Formulário */}
             <div className="flex items-center justify-between">
               <button
-                onClick={() => {
-                  setSelectedProjectId('');
-                  setProject(null);
-                  setFormData({});
-                }}
+                type="button"
+                onClick={handleBackRequest}
                 className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" /> Voltar
               </button>
 
-              <span className="text-[10px] font-black text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-full uppercase">
-                {project.fields?.length || 0} Itens
-              </span>
+              <div className="flex items-center gap-2">
+                {hasRestoredDraft && (
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                    <Save className="w-3 h-3 text-amber-600" /> Rascunho Ativo
+                  </span>
+                )}
+                <span className="text-[10px] font-black text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-full uppercase">
+                  {project.fields?.length || 0} Itens
+                </span>
+              </div>
             </div>
 
+            {/* Cartão do Formulário */}
             <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-5">
               <div className="border-b border-slate-100 pb-3.5">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
@@ -400,14 +480,38 @@ function CollectAppContent() {
                   ))}
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-4 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white font-black text-sm rounded-2xl transition shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  <Send className="w-4 h-4" />
-                  <span>Finalizar & Salvar Coleta</span>
-                </button>
+                {/* Ações de Envio e Rascunho */}
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveDraft}
+                      className="py-3 px-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200"
+                    >
+                      <Save className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Salvar Rascunho</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleClearDraft}
+                      disabled={!hasUnsavedChanges}
+                      className="py-3 px-3 rounded-2xl bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-400 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Limpar Campos</span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-4 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white font-black text-sm rounded-2xl transition shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>Finalizar & Salvar Coleta</span>
+                  </button>
+                </div>
               </form>
             </div>
           </div>
@@ -549,7 +653,7 @@ function CollectAppContent() {
         )}
       </main>
 
-      {/* Modal de Confirmação */}
+      {/* Modal de Confirmação de Envio */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-slate-200">
@@ -603,6 +707,65 @@ function CollectAppContent() {
                     <span>Confirmar</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Saída (Unsaved Changes) */}
+      {showExitConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-slate-200">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-black text-slate-900">
+                Sair sem finalizar coleta?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Você tem alterações preenchidas que ainda não foram finalizadas.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  handleSaveDraft();
+                  setShowExitConfirmModal(false);
+                  setSelectedProjectId('');
+                  setProject(null);
+                }}
+                className="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Salvar Rascunho e Sair</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (project) localStorage.removeItem(getDraftKey(project.id));
+                  setFormData({});
+                  setShowExitConfirmModal(false);
+                  setSelectedProjectId('');
+                  setProject(null);
+                  setHasRestoredDraft(false);
+                }}
+                className="w-full py-3 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-600 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Descartar Alterações
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowExitConfirmModal(false)}
+                className="w-full py-2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+              >
+                Continuar Preenchendo
               </button>
             </div>
           </div>
