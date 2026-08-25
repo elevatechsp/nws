@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NWS Coleta</string>
+    <string name="title_activity_main">NWS Coleta</string>
+    <string name="package_name">com.nws.coleta</string>
+    <string name="custom_url_scheme">com.nws.coleta</string>
+</resources>

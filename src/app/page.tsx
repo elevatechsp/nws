@@ -1,69 +1,98 @@
-import Image from "next/image";
+// src/app/page.tsx
+'use client';
 
-export default function Home() {
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, BarChart3 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+
+export default function HomePage() {
+  const router = useRouter();
+  const { user: contextUser } = useAuth();
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+
+    let active = contextUser;
+    if (!active && typeof window !== 'undefined') {
+      const raw = 
+        sessionStorage.getItem('nws_auth_session') || 
+        sessionStorage.getItem('nws_current_session');
+
+      if (raw) {
+        try {
+          active = JSON.parse(raw);
+        } catch {
+          active = null;
+        }
+      }
+    }
+
+    if (!active) {
+      router.replace('/login');
+    } else {
+      setCurrentUser(active);
+    }
+  }, [contextUser, router]);
+
+  // Renderiza um placeholder invisível enquanto hidrata para o Turbopack/Next.js sempre receber um elemento JSX válido
+  if (!isMounted || !currentUser) {
+    return <div className="min-h-screen bg-white" />;
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <main className="min-h-[calc(100vh-4rem)] bg-gradient-to-b from-teal-50/70 via-emerald-50/40 to-white flex flex-col items-center justify-center px-6 py-16 font-sans relative overflow-hidden">
+      {/* Luzes e Efeito Suave de Fundo */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[350px] bg-teal-200/35 rounded-full blur-[120px] pointer-events-none" />
+
+      <div className="max-w-4xl w-full text-center space-y-8 relative z-10">
+        {/* Pílula Superior de Identificação */}
+        <div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-white/90 border border-teal-200 shadow-2xs text-slate-700 text-xs md:text-sm font-semibold backdrop-blur-xs">
+          <span className="text-teal-700 font-extrabold text-sm tracking-tight">∞ NWS</span>
+          <span className="text-slate-300">•</span>
+          <span className="text-slate-600 font-medium">
+            {currentUser.companyName || 'Data & Operations Platform'}
+          </span>
+          <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
+        </div>
+
+        {/* Título Principal */}
+        <div className="space-y-2">
+          <h1 className="text-5xl sm:text-6xl md:text-7xl font-black tracking-tight text-slate-900 leading-[1.08]">
+            Seja bem-vindo,
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+          <h2 className="text-5xl sm:text-6xl md:text-7xl font-black tracking-tight bg-gradient-to-r from-teal-400 via-teal-500 to-emerald-400 bg-clip-text text-transparent leading-[1.12] pb-2">
+            {currentUser.name || 'Operador'}
+          </h2>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        {/* Descrição Subtítulo */}
+        <p className="text-sm md:text-base text-slate-500 max-w-2xl mx-auto leading-relaxed font-normal">
+          Crie formulários customizados, audite informações em campo com recursos avançados (OCR, QR, GPS e Assinatura) e gerencie aprovações em tempo real.
+        </p>
+
+        {/* Botões de Ação */}
+        <div className="pt-3 flex flex-wrap items-center justify-center gap-4">
+          <Link
+            href="/projects"
+            className="flex items-center gap-2 bg-gradient-to-r from-teal-400 to-emerald-400 hover:from-teal-500 hover:to-emerald-500 text-slate-950 font-black text-sm px-8 py-3.5 rounded-2xl transition shadow-md hover:shadow-lg shadow-teal-500/20 cursor-pointer"
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <span>Gerenciar Sistemas</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+
+          <Link
+            href="/reports"
+            className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 font-bold text-sm px-8 py-3.5 rounded-2xl transition shadow-2xs hover:shadow-xs cursor-pointer"
           >
-            Documentation
-          </a>
+            <BarChart3 className="w-4 h-4 text-teal-600" />
+            <span>Ver Relatórios</span>
+          </Link>
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
